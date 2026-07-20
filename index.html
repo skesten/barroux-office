@@ -26,6 +26,7 @@ main{max-width:680px;margin:0 auto;padding:14px}
 .notice{background:#fdf6e3;border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:.85rem;color:var(--muted);margin-bottom:12px}
 .hour{background:var(--card);border:1px solid var(--line);border-radius:14px;margin-bottom:12px;padding:12px 14px;box-shadow:0 1px 3px rgba(60,40,10,.08)}
 .hour .row1{display:flex;align-items:center;gap:10px}
+.hour.companion{border-left:4px solid var(--gold)}
 .hour h2{margin:0;font-size:1.15rem;font-weight:600;flex:1}
 .hour .latin{font-size:.78rem;color:var(--muted);font-style:italic;display:block}
 .hour .src{font-size:.75rem;color:var(--muted);margin-top:6px}
@@ -119,6 +120,44 @@ const HOURS = [
 const TENEBRAE = {key:'tenebrae', code:'E', en:'Tenebrae', la:'Tenebrae', cmd:null};
 const SRC_YEARS_PREF = [2022,2021,2020,2019,2018]; // preference order among source years
 const DO_BASE = 'https://www.divinumofficium.com/cgi-bin/horas/Pofficium.pl';
+const AUDIO_BASE = 'https://skesten.github.io/barroux-office/audio/';
+const audioAvail = {};   // dateStr -> true | false | null(in flight)
+const companionUrl = d => AUDIO_BASE + d + '.mp3';
+
+function buildCompanionCard(container, dateStr) {
+  const card = document.createElement('div');
+  card.className = 'hour companion';
+  const row = document.createElement('div');
+  row.className = 'row1';
+  row.innerHTML = '<h2>Martyrology &amp; Rule <span class="latin">companion reading — at Prime</span></h2>';
+  const url = companionUrl(dateStr);
+  if (audioAvail[dateStr] === false) {
+    const m = document.createElement('span');
+    m.className = 'missing'; m.textContent = 'audio not yet available';
+    row.appendChild(m);
+  } else {
+    const pb = document.createElement('button');
+    pb.className = 'btn play'; pb.innerHTML = '&#9654;&#xFE0E;'; pb.title = 'Play reading';
+    pb.onclick = () => startQueue([{url, label: 'Martyrology & Rule — ' + dateStr, hourKey: 'companion'}]);
+    row.appendChild(pb);
+    const dl = document.createElement('a');
+    dl.className = 'btn dl'; dl.href = url; dl.download = dateStr + '-reading.mp3';
+    dl.innerHTML = '&#8595;'; dl.title = 'Download mp3';
+    row.appendChild(dl);
+  }
+  const tb = document.createElement('button');
+  tb.className = 'btn txt'; tb.textContent = 'Text';
+  tb.onclick = () => openText('Martyrology & Rule (at Prime)', doTextUrl(dateStr, 'prayPrima'));
+  row.appendChild(tb);
+  card.appendChild(row);
+  container.appendChild(card);
+  if (audioAvail[dateStr] === undefined) {
+    audioAvail[dateStr] = null;
+    fetch(url, {method: 'HEAD'})
+      .then(r => { audioAvail[dateStr] = r.ok; if (!r.ok) render(); })
+      .catch(() => { audioAvail[dateStr] = true; });  // offline/file:// — let the player's error-skip handle it
+  }
+}
 const DO_LANG = 'English';
 const DO_VERSION = 'Monastic - 1963 - Barroux';
 
@@ -178,7 +217,7 @@ function rankCandidates(dates, hourCode, targetVespera) {
 function doTextUrl(dateStr, cmd) {
   const [y,m,d] = dateStr.split('-');
   const q = 'date1=' + m + '-' + d + '-' + y + '&command=' + cmd +
-            '&version=' + encodeURIComponent(DO_VERSION) + '&lang2=' + encodeURIComponent(DO_LANG);
+            '&version=' + encodeURIComponent(DO_VERSION) + '&lang2=' + encodeURIComponent(DO_LANG) + '&caller=1';
   return DO_BASE + '?' + q;
 }
 
@@ -267,6 +306,7 @@ function render() {
       card.appendChild(src);
     }
     hoursDiv.appendChild(card);
+    if (h.key === 'prime') buildCompanionCard(hoursDiv, dateStr);
   }
 
   const noteMap = {exact:'Matched by exact office title.', base:'Matched by office title (lectionary-week suffix differs).', season:'Matched by season, weekday and rank (green feria — chants are the same).', none:''};
@@ -322,6 +362,9 @@ $('playall').onclick = () => {
       srcDate = chosenSrc[h.key] && opts.includes(chosenSrc[h.key]) ? chosenSrc[h.key] : opts[0] || null;
     }
     if (srcDate) items.push({url: CDN + srcDate + '-' + h.key + '.mp3', label: h.en + ' (rec. ' + srcDate + ')', hourKey: h.key});
+    if (h.key === 'prime' && audioAvail[dateStr] !== false) {
+      items.push({url: companionUrl(dateStr), label: 'Martyrology & Rule', hourKey: 'companion'});
+    }
   }
   if (items.length) startQueue(items);
 };
